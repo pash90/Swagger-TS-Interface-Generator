@@ -1,10 +1,21 @@
 'use strict';
-// The module 'vscode' contains the VS Code extensibility API
-// Import the module and reference it with the alias vscode in your code below
-import * as vscode from 'vscode';
 
-// this method is called when your extension is activated
-// your extension is activated the very first time the command is executed
+/** Libraries */
+import * as vscode from 'vscode';
+import {Map} from 'immutable';
+import * as Swagger from 'swagger-schema-official';
+
+/** Helpers */
+import {fetchSwaggerDefinitions, getRequestType, hasResponseDefinition, getResponseDefinition, generateApiInterface} from '../helpers/Swagger';
+
+/**
+ * This method is called when the extension is activated.
+ * The extension is activated the very first time the command
+ * is executed.
+ * 
+ * @param context The context under which the extension is
+ * activated
+ */
 export function activate(context: vscode.ExtensionContext) {
 
     // Use the console to output diagnostic information (console.log) and errors (console.error)
@@ -16,14 +27,27 @@ export function activate(context: vscode.ExtensionContext) {
     // The commandId parameter must match the command field in package.json
     let disposable = vscode.commands.registerCommand('extension.sayHello', () => {
         // The code you place here will be executed every time your command is executed
-
-        // Display a message box to the user
-        vscode.window.showInformationMessage('Hello World!');
+        generateApiInterfaces();
     });
 
     context.subscriptions.push(disposable);
 }
 
-// this method is called when your extension is deactivated
+/**
+ * This method is called when your extension is deactivated
+ */
 export function deactivate() {
+}
+
+const generateApiInterfaces = () => {
+  fetchSwaggerDefinitions().then(data => {
+    const apis = Map(data.paths);
+
+    apis.map((api: Swagger.Path) => {
+      if(hasResponseDefinition(api)) {
+        console.log(api[getRequestType(api)].operationId);
+        generateApiInterface(getResponseDefinition(api));
+      }
+    })
+  });
 }
