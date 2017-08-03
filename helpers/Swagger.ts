@@ -3,6 +3,8 @@ import * as vscode from 'vscode';
 import axios, {AxiosInstance} from 'axios';
 import {fromJS} from 'immutable';
 import * as Lodash from 'lodash';
+import * as FileSystem from 'fs';
+import * as Path from 'path';
 
 /** Interfaces */
 import * as Swagger from 'swagger-schema-official';
@@ -101,29 +103,54 @@ export async function fetchSwaggerDefinitions(): Promise<Swagger.Spec> {
  * @param properties An object with all the properties in the response definition
  * @returns An interface that can be used to easily use the response data from the api
  */
-export const generateApiInterface = (interfaceName: string, properties: ResponseProperties): ApiResponseInterface => {
+export const generateApiInterface = (interfaceName: string, properties: ResponseProperties): string => {
   const formattedInterfaceName = Lodash.upperFirst(Lodash.camelCase(interfaceName));
 
 
   const items = fromJS(properties).reduce((reduction, property, key) => {
-    return reduction += `${getPropertyString(key, property.get('type'))}`;
+    return reduction += `${getPropertyString(key, property)}`;
   }, '');
   
-  const sampleInterface = `export interface ${formattedInterfaceName} {\n${items}}`
-  console.log(sampleInterface + '\n');
-
-  return {}
+  const generatedInterface = `export interface ${formattedInterfaceName} {\n${items}}\n\n`;
+  return generatedInterface;
 }
 
-const getPropertyString = (name: string, type: string): string => {
+const getPropertyString = (name: string, property: Map<string, any>): string => {
+  const type = property.get('type');
+
   switch(type) {
+    // string
     case 'string': return `  ${name}: string\n`;
+
+    // number
     case 'number': return `  ${name}: number\n`;
     case 'integer': return `  ${name}: number\n`;
-    case 'array': return `  ${name}: List<any>\n`;
+
+    // object
     case 'object': return `  ${name}: Map<string, any>\n`;
+
+    // file
     case 'file': return `  ${name}: File\n`;
+
+    // boolean
     case 'boolean': return `  ${name}: boolean\n`;
+
+    // array
+    case 'array': return `  ${name}: List<${property.get('items').get('type')}>\n`
+
+    // default
     default: return `  ${name}: any\n`;
   }
+}
+
+export const makeSwaggerInterfaceFile = (interfaces: string): void => {
+  const interfaceImports = "import {Map, List} from 'immutable'\n\n";
+  const filePath: string = vscode.workspace.rootPath + '/front-end/interfaces/Swagger.ts'
+  const fileExists: boolean = FileSystem.existsSync(filePath);
+
+  if(!fileExists) {
+    FileSystem.mkdirSync(Path.dirname(filePath));
+  }
+
+  FileSystem.writeFileSync(filePath, interfaceImports + interfaces, error => console.log(error));
 }
