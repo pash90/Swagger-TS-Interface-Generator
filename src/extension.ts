@@ -6,7 +6,8 @@ import {Map} from 'immutable';
 import * as Swagger from 'swagger-schema-official';
 
 /** Helpers */
-import {fetchSwaggerDefinitions, getRequestType, hasResponseDefinition, getResponseDefinition, generateApiInterface} from '../helpers/Swagger';
+import {fetchSwaggerDefinitions, getRequestType, hasResponseDefinition, 
+        getResponseDefinition, generateApiInterface, makeSwaggerInterfaceFile} from '../helpers/Swagger';
 
 /**
  * This method is called when the extension is activated.
@@ -42,11 +43,14 @@ export function deactivate() {
 const generateApiInterfaces = () => {
   fetchSwaggerDefinitions().then(data => {
     const apis = Map(data.paths);
+    let interfaces = '';
 
     apis.map((api: Swagger.Path) => {
       if(hasResponseDefinition(api)) {
-        generateApiInterface(api[getRequestType(api)].operationId, getResponseDefinition(api));
+        interfaces += generateApiInterface(api[getRequestType(api)].operationId, getResponseDefinition(api));
       }
-    })
+    });
+
+    makeSwaggerInterfaceFile(interfaces);
   });
 }
