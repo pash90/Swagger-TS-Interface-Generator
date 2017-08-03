@@ -45,8 +45,7 @@ const generateApiInterfaces = () => {
 
     apis.map((api: Swagger.Path) => {
       if(hasResponseDefinition(api)) {
-        console.log(api[getRequestType(api)].operationId);
-        generateApiInterface(getResponseDefinition(api));
+        generateApiInterface(api[getRequestType(api)].operationId, getResponseDefinition(api));
       }
     })
   });

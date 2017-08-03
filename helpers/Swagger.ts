@@ -2,6 +2,7 @@
 import * as vscode from 'vscode';
 import axios, {AxiosInstance} from 'axios';
 import {fromJS} from 'immutable';
+import * as Lodash from 'lodash';
 
 /** Interfaces */
 import * as Swagger from 'swagger-schema-official';
@@ -100,14 +101,29 @@ export async function fetchSwaggerDefinitions(): Promise<Swagger.Spec> {
  * @param properties An object with all the properties in the response definition
  * @returns An interface that can be used to easily use the response data from the api
  */
-export const generateApiInterface = (properties: ResponseProperties): ApiResponseInterface => {
+export const generateApiInterface = (interfaceName: string, properties: ResponseProperties): ApiResponseInterface => {
+  const formattedInterfaceName = Lodash.upperFirst(Lodash.camelCase(interfaceName));
+
+
   const items = fromJS(properties).reduce((reduction, property, key) => {
-    reduction[key] = property.get('type');
-    return reduction;
-  }, {});
+    return reduction += `${getPropertyString(key, property.get('type'))}`;
+  }, '');
   
-  console.log(items);
-  console.log('------------------------------\n');
+  const sampleInterface = `export interface ${formattedInterfaceName} {\n${items}}`
+  console.log(sampleInterface + '\n');
 
   return {}
+}
+
+const getPropertyString = (name: string, type: string): string => {
+  switch(type) {
+    case 'string': return `  ${name}: string\n`;
+    case 'number': return `  ${name}: number\n`;
+    case 'integer': return `  ${name}: number\n`;
+    case 'array': return `  ${name}: List<any>\n`;
+    case 'object': return `  ${name}: Map<string, any>\n`;
+    case 'file': return `  ${name}: File\n`;
+    case 'boolean': return `  ${name}: boolean\n`;
+    default: return `  ${name}: any\n`;
+  }
 }
