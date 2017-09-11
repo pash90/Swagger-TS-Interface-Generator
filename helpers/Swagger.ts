@@ -1,7 +1,7 @@
 /** Libraries */
 import * as vscode from 'vscode';
 import axios, {AxiosInstance} from 'axios';
-import {fromJS} from 'immutable';
+import {fromJS, Map, List} from 'immutable';
 import * as Lodash from 'lodash';
 import * as FileSystem from 'fs';
 import * as Path from 'path';
@@ -14,7 +14,32 @@ import {ApiResponseInterface} from '../interfaces/Api';
 /** Types */
 type RequestType = 'post' | 'get' | 'patch' | 'delete' | 'put';
 type ResponseProperties = {[propertyName: string]: Swagger.Schema};
+interface ApiInterfaceItems {
+  propertyString: string,
+  interfaces: string
+}
 
+/**
+ * Takes the URL for swagger and fetches the definition for it
+ * 
+ * @return A promise that will resolve to the swagger spec for the
+ * underlying URL
+ */
+export async function fetchSwaggerDefinitions(): Promise<Swagger.Spec> {
+  const [fileURI] = await vscode.workspace.findFiles('**/client.json', '**/node_modules/**', 5); //TODO: this needs to be modified so that fallback to default.json occurs
+  const document = await vscode.workspace.openTextDocument(fileURI);
+  const {baseURL, apiKey}: ProjectConfiguration = JSON.parse(document.getText());
+
+  const axiosInstance = axios.create({
+    withCredentials: true,
+    headers: {apiKey}
+  });
+  const response = await axiosInstance.get(baseURL + '/swagger/docs/v1?flatten=true');
+
+  return response.data;
+}
+
+/** Generating Interfaces : Start */
 
 /**
  * Get the type of the request.
@@ -67,7 +92,8 @@ export const hasResponseDefinition = (api: Swagger.Path): boolean => {
  * definition
  */
 export const getResponseDefinition = (api: Swagger.Path): ResponseProperties => {
-  const schema = api[getRequestType(api)].responses['200'].schema;
+  const requestType:string = getRequestType(api);
+  const schema = api[requestType].responses['200'].schema;
   let properties = schema.properties;
 
   if(!properties && !(schema.items instanceof Array)) {
@@ -77,42 +103,42 @@ export const getResponseDefinition = (api: Swagger.Path): ResponseProperties => 
   return properties;
 }
 
-/**
- * Takes the URL for swagger and fetches the definition for it
- * 
- * @return A promise that will resolve to the swagger spec for the
- * underlying URL
- */
-export async function fetchSwaggerDefinitions(): Promise<Swagger.Spec> {
-  const [fileURI] = await vscode.workspace.findFiles('**/client.json', '**/node_modules/**', 5); //TODO: this needs to be modified so that fallback to default.json occurs
-  const document = await vscode.workspace.openTextDocument(fileURI);
-  const {baseURL, apiKey}: ProjectConfiguration = JSON.parse(document.getText());
-
-  const axiosInstance = axios.create({
-    withCredentials: true,
-    headers: {apiKey}
-  });
-  const response = await axiosInstance.get(baseURL + '/swagger/docs/v1?flatten=true');
-
-  return response.data;
-}
-
-/**
- * Generates an interface for the underlying API
- * 
- * @param properties An object with all the properties in the response definition
- * @returns An interface that can be used to easily use the response data from the api
- */
-export const generateApiInterface = (interfaceName: string, properties: ResponseProperties): string => {
+export const getInterface = (interfaceName: string, propertyTree: Map<string, any>): ApiInterfaceItems => {
   const formattedInterfaceName = Lodash.upperFirst(Lodash.camelCase(interfaceName));
+  let subInterfaces: string = '';
 
+  const interfaceString = propertyTree.reduce((reduction, property, key) => {
+    if(property.has('items')) {
+      const items = property.getIn(['items', 'properties']);
+      const {propertyString, interfaces} = getInterface(formattedInterfaceName + key, items);
+      subInterfaces += interfaces;
+      return reduction += propertyString;
+    }
 
-  const items = fromJS(properties).reduce((reduction, property, key) => {
-    return reduction += `${getPropertyString(key, property)}`;
+    if(property.has('enum')) {
+      return reduction + getEnumType(key, property.get('enum'));
+    }
+
+    return reduction + getPropertyString(key, property);
   }, '');
   
-  const generatedInterface = `export interface ${formattedInterfaceName} {\n${items}}\n\n`;
-  return generatedInterface;
+
+  return {
+    interfaces: interfaceString,
+    propertyString: ''
+  };
+}
+
+const getEnumType = (name: string, enumValues: List<string>): string => {
+
+  const formattedEnumValues = 'List<' + enumValues.reduce((reduction, value, index) => {
+    if(index === enumValues.size - 1) {
+      return reduction + ` '${value}'`;
+    }
+    return reduction + ` '${value}' |`;
+  }, '') + '>';
+
+  return `  ${name}: ${formattedEnumValues}\n`;
 }
 
 const getPropertyString = (name: string, property: Map<string, any>): string => {
@@ -136,13 +162,21 @@ const getPropertyString = (name: string, property: Map<string, any>): string => 
     case 'boolean': return `  ${name}: boolean\n`;
 
     // array
-    case 'array': return `  ${name}: List<${property.get('items').get('type')}>\n`
+    case 'array': {
+      
+    }
 
     // default
     default: return `  ${name}: any\n`;
   }
 }
 
+/** Generating Intefaces : End */
+
+/**
+ * Write interfaces to file
+ * @param interfaces 
+ */
 export const makeSwaggerInterfaceFile = (interfaces: string): void => {
   const interfaceImports = "import {Map, List} from 'immutable'\n\n";
   const filePath: string = vscode.workspace.rootPath + '/front-end/interfaces/Swagger.ts'
